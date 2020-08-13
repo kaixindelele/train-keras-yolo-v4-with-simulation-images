@@ -8,7 +8,7 @@ from keras.models import load_model
 from keras.layers import Input
 from PIL import Image, ImageFont, ImageDraw
 from nets.yolo4 import yolo_body,yolo_eval
-from utils.utils import letterbox_image
+from yolo_utils.utils import letterbox_image
 #--------------------------------------------#
 #   使用自己训练好的模型预测需要修改2个参数
 #   model_path和classes_path都需要修改！
@@ -16,9 +16,10 @@ from utils.utils import letterbox_image
 class YOLO(object):
     _defaults = {
         "model_path": 'model_data/yolo4_weight.h5',
+        # "model_path": '/home/lyl/Documents/yolov4-keras-master/logs/last1.h5',
         "anchors_path": 'model_data/yolo_anchors.txt',
         "classes_path": 'model_data/coco_classes.txt',
-        "score" : 0.5,
+        "score" : 0.1,
         "iou" : 0.3,
         # 显存比较小可以使用416x416
         # 显存比较大可以使用608x608
@@ -35,7 +36,24 @@ class YOLO(object):
     #---------------------------------------------------#
     #   初始化yolo
     #---------------------------------------------------#
-    def __init__(self, **kwargs):
+    def __init__(self,
+                 return_class_flag=None,
+                 return_score_flag=None,
+                 font_size=10,
+                 print_flag=True,
+                 get_max_flag=True,
+                 **kwargs):
+        if kwargs is None:
+            pass
+        else:
+            for key, value in kwargs.items():
+                self._defaults[key] = value
+        self.return_class_flag = return_class_flag
+        self.return_score_flag = return_score_flag
+        self.font_size = font_size
+        self.print_flag = print_flag
+        self.get_max_flag = get_max_flag
+
         self.__dict__.update(self._defaults)
         self.class_names = self._get_class()
         self.anchors = self._get_anchors()
@@ -128,25 +146,28 @@ class YOLO(object):
                 self.input_image_shape: [image.size[1], image.size[0]],
                 K.learning_phase(): 0
             })
-
-        print('Found {} boxes for {}'.format(len(out_boxes), 'img'))
+        if self.print_flag:
+            print('Found {} boxes for {}'.format(len(out_boxes), 'img'))
         # 设置字体
         font = ImageFont.truetype(font='font/simhei.ttf',
-                    size=np.floor(3e-2 * image.size[1] + 0.5).astype('int32'))
+                  size=np.floor(self.font_size * 0.01 * image.size[1] + 0.5).astype('int32'))
         thickness = (image.size[0] + image.size[1]) // 300
 
         small_pic=[]
 
         for i, c in list(enumerate(out_classes)):
+            if self.get_max_flag:
+                if i > 0:
+                    break
             predicted_class = self.class_names[c]
             box = out_boxes[i]
             score = out_scores[i]
 
             top, left, bottom, right = box
-            top = top - 5
-            left = left - 5
-            bottom = bottom + 5
-            right = right + 5
+            # top = top - 5
+            # left = left - 5
+            # bottom = bottom + 5
+            # right = right + 5
 
             top = max(0, np.floor(top + 0.5).astype('int32'))
             left = max(0, np.floor(left + 0.5).astype('int32'))
@@ -172,11 +193,18 @@ class YOLO(object):
             draw.rectangle(
                 [tuple(text_origin), tuple(text_origin + label_size)],
                 fill=self.colors[c])
-            draw.text(text_origin, str(label,'UTF-8'), fill=(0, 0, 0), font=font)
+            draw.text(text_origin,
+                      str(label, 'UTF-8'),
+                      fill=(0, 0, 0), font=font)
             del draw
 
         end = timer()
-        print(end - start)
+        if self.return_class_flag:
+            return image, predicted_class
+        if self.return_score_flag:
+            return image, out_scores, predicted_class
+        if self.print_flag:
+            print(end - start)
         return image
 
     def close_session(self):
